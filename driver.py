@@ -1,4 +1,6 @@
 
+import time
+
 class parameter:
     def __init__(self, name, values):
         self.name = name
@@ -22,87 +24,108 @@ def brute_force_search():
                 pass # currently non-feasible
 
 
+# Note: This is a toy worker.  In reality, we expect a full run
+# to take upwards of 9 hours.
 def worker_function(args):
-    print args
+    import random
     import time
-    time.sleep(1)
-    return 1
+    time.sleep(random.randint(1,5))
+    return random.random() # FP 0 <= 1
+
+#TODO: add a standard wrapper for JSON, JAML, XML, python serializer jobs
 
 
 import pp
+
+# needed to make the dictionary itself a valid hash key
+class frozendict(dict):
+    def __hash__(self):
+        return hash(frozenset(self.items()))
+
+# Note: This should be moved into a SQL database or some such
+#TODO
+# alternately, this could be used to cache results only long enough
+# for the search algorithm to decide what to retain - advantages
+# to each I suppose.  Cache size might become a problem
+results_to_date = {}
 
 # PP nicely includes queue management
 # unfortunately, we want to make decisions before dispatching...
 # thus, we hack
 jobs = None
 def dispatch_one_job(job_server, worker_func, item):
+    """Wait until a job slot is available on the available workers, then dispatch a new job to that worker.  This function may block for long periods of time!"""
     global jobs
+    global results_to_date
     if jobs == None:
         jobs = [ None for x in range(job_server.get_ncpus()) ]
     while True:
         for i in xrange(len(jobs)):
-            if None != jobs[i] and jobs[i].finished:
+            if None != jobs[i] and jobs[i][1].finished:
+                results_to_date[ frozendict(jobs[i][0]) ] = jobs[i][1]()
                 jobs[i] = None
         for i in xrange(len(jobs)):
             if None == jobs[i]:
                 print "Dispatching job " +str(i)
-                jobs[i] = job_server.submit(worker_function, (item,));
+                jobs[i] = [item, job_server.submit(worker_func, (item,))];
                 return
+        
 
-def drive_autotuner( search_func ):
+def job_slot_free(job_server):
+    """Returns true if a job slot is free and a new job can be executed"""
+    global jobs
+    global results_to_date
+    if jobs == None:
+        jobs = [ None for x in range(job_server.get_ncpus()) ]
+    for i in xrange(len(jobs)):
+        if None == jobs[i] or jobs[i][1].finished:
+            return True;
+    return False
+
+def drive_autotuner( search_func, worker_func ):
+    """ Given a search function which decides which points to explore
+    (structured as a generator) and a worker_func that takes the parameters
+    and returns a result, this function handles the logic of dispatching
+    all of the jobs to each available core and (potentially) machine"""
+    global results_to_date
+
+    import time
+
+    start_time = time.time()
 
     # tuple of all parallel python servers to connect with
     ppservers = () #ppservers = ("10.0.0.1",)
-    
     
     # PP automatically uses every CPU, to avoid overload, use one less
     job_server = pp.Server(3, ppservers=ppservers)
     
     print "Starting pp with", job_server.get_ncpus(), "workers"
 
-
-    # PP nicely includes queue management
-    # unfortunately, we want to make decisions before dispatching...
-    # thus, we hack
-    jobs = [ None for x in range(job_server.get_ncpus()) ]
+    # TODO: We will need to add timeouts
     for item in search_func():
-        dispatch_one_job(job_server, worker_function, item)
+        dispatch_one_job(job_server, worker_func, item)
 
-        # Retrieves the result calculated by job1
-        # The value of job1() is the same as sum_primes(100)
-        # If the job has not been finished yet, execution will wait here until result is available
-        #result = job1()
-        #print result
+        # This allows the search func to _only_ be called when
+        # there is a slot free.  This gives it slightly better
+        # insight and control on how to dispatch jobs
+        while not job_slot_free(job_server):
+            # TODO: probably want some form of exponential backoff here
+            import time
+            time.sleep(1)
 
-drive_autotuner( brute_force_search )
+    # Wait for any remaining jobs to finish
+    job_server.wait()
+    for i in xrange(len(jobs)):
+        if None != jobs[i]:
+            results_to_date[ frozendict(jobs[i][0]) ] = jobs[i][1]()
+            jobs[i] = None
+
+    print "Time elapsed: ", time.time() - start_time, "s"
+    job_server.print_stats()
+    print results_to_date
+
+
+drive_autotuner( brute_force_search, worker_function )
+
 exit(1);
 
-
-
-
-
-# Submit a job of calulating sum_primes(100) for execution. 
-# sum_primes - the function
-# (100,) - tuple with arguments for sum_primes
-# (isprime,) - tuple with functions on which function sum_primes depends
-# ("math",) - tuple with module names which must be imported before sum_primes execution
-# Execution starts as soon as one of the workers will become available
-job1 = job_server.submit(worker_function, (100,), (isprime,), ("math",))
-
-# Retrieves the result calculated by job1
-# The value of job1() is the same as sum_primes(100)
-# If the job has not been finished yet, execution will wait here until result is available
-result = job1()
-
-print "Sum of primes below 100 is", result
-
-start_time = time.time()
-
-# The following submits 8 jobs and then retrieves the results
-inputs = (100000, 100100, 100200, 100300, 100400, 100500, 100600, 100700)
-jobs = [(input, job_server.submit(sum_primes,(input,), (isprime,), ("math",))) for input in inputs]
-for input, job in jobs:
-    print "Sum of primes below", input, "is", job()
-
-print "Time elapsed: ", time.time() - start_time, "s"
-job_server.print_stats()
