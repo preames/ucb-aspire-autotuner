@@ -13,6 +13,14 @@ class frozendict(dict):
     def __hash__(self):
         return hash(frozenset(self.items()))
 
+# This horribly hacky, but neccessary for the parallel python code
+# essentially, pp has to reimport all the related modules.  As a result
+# it needs the full list of names you're going to use.  Grrr.
+# TODO: long term using python inspect to automagically derive this might
+#   be better.  A first hacky attempt didn't work and it's not worth
+#   investing the time in right now.
+g_modules = ["framework", "driver"]
+
 # Note: This should be moved into a SQL database or some such
 #TODO
 # alternately, this could be used to cache results only long enough
@@ -38,7 +46,7 @@ def dispatch_one_job(job_server, worker_func, item):
         for i in xrange(len(jobs)):
             if None == jobs[i]:
                 print "Dispatching job " +str(i)
-                jobs[i] = [item, job_server.submit(worker_func, (item,))];
+                jobs[i] = [item, job_server.submit(worker_func, (item,),modules=tuple(g_modules),globals=globals())];
                 return
         
 

@@ -1,5 +1,18 @@
 
+# TODO (big picture)
+# pull a active machine list from a central location on launch
+# have each machine launched with local cutoff
+# define standard search routines
+# add a standard wrapper for JSON, JAML, XML, python serializer jobs
+# figure out standard database (wrapper?  default?)
+
+# Note: pp nicely handles remote workers that abort with restart
+# this means that so long as the master stays up, any slaves can be
+# freely killed.  Yeah!
+
 import time
+import sqlite3
+import os
 
 class parameter:
     def __init__(self, name, values):
@@ -17,10 +30,44 @@ def noop_worker_function(args):
     return [random.random(), 1] # FP 0 <= 1
 
 
-#TODO: add a standard wrapper for JSON, JAML, XML, python serializer jobs
+def create_table():
+    conn = sqlite3.connect('example.db')
+
+    c = conn.cursor()
+
+    c.execute('''CREATE TABLE stocks
+             (date text, trans text, symbol text, qty real, price real)''')
+        
+    conn.commit()
+    conn.close()
+
+def wrap_db_record_impl(inner_func, params):
+    results = inner_func(params)
+
+    if not os.path.exists("example.db"):
+        create_table()
+    conn = sqlite3.connect('example.db')
+    
+    c = conn.cursor()
+    
+    c.execute("INSERT INTO stocks VALUES ('2006-01-05','BUY','RHAT',100,35.14)")
+    
+    conn.commit()
+    conn.close()
+    return results
+
+def wrap_db_record(inner_func):
+    rval = lambda x: wrap_db_record_impl(inner_func, x)
+    return rval
+
+
 
 import pp
 import job_manager
+
+def add_module(name):
+    """ Add your module with your implementation and anything it depends on."""
+    job_manager.g_modules += [name]
 
 def drive_autotuner( search_func, worker_func ):
     """ Given a search function which decides which points to explore
