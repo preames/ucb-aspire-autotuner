@@ -27,7 +27,7 @@ def noop_worker_function(args):
     import random
     import time
     time.sleep(random.randint(1,5))
-    return {"perf" : random.random(), "random_name": 1} # FP 0 <= 1
+    return {"perf" : random.random(), "random_name": 1.0}
 
 
 def create_table():
@@ -128,6 +128,32 @@ def drive_autotuner( search_func, worker_func):
 
     # TODO: We will need to add timeouts
     for item in search_func():
+
+        param_hash = hash(frozenset(item.items()))
+
+        conn = sqlite3.connect('example.db')
+        c = conn.cursor()
+        c.execute("SELECT rowid FROM sample_point WHERE param_hash = ?", (param_hash,))
+        data=c.fetchone()
+        if data is not None:
+            print "This sample point had previously generated.  Returning it from sqlite3"
+            key = data[0]
+            c.execute("SELECT key, value FROM result_instances WHERE result_key = ?", (key,))
+
+            result = {}
+            for key, value in c:
+                result[ str(key) ] = float(value)
+            # parse it
+            # return a new dict from that data
+            internal_result_handler(item, result)
+            conn.commit()
+            conn.close()
+            continue
+
+        conn.commit()
+        conn.close()
+
+        # We haven't pre-computed this point, keep it running
         job_manager.dispatch_one_job(job_server, worker_func, item, internal_result_handler)
 
         # This allows the search func to _only_ be called when

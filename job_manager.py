@@ -50,6 +50,8 @@ def job_slot_free(job_server):
 def wait_for_remaining_jobs(job_server, callback):
     global jobs
     job_server.wait()
+    if jobs == None:
+        return # nothing to do
     for i in xrange(len(jobs)):
         if None != jobs[i]:
             callback(jobs[i][0], jobs[i][1]())
