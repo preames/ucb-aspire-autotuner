@@ -22,13 +22,5 @@ def brute_force_search():
 
 def explore_point(args):
     print "Running expore point"
-    return framework.wrap_db_record(framework.noop_worker_function)(args)
-
-
-import framework
-if __name__ == "__main__":
-    # create_table()
-    framework.drive_autotuner( brute_force_search, worker_func )
-
-    exit(1);
+    return framework.noop_worker_function(args)
 

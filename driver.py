@@ -25,7 +25,6 @@ import austin
 
 import framework
 if __name__ == "__main__":
-    # create_table()
     framework.add_module("austin")
     framework.drive_autotuner( austin.brute_force_search, austin.explore_point )
 

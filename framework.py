@@ -31,8 +31,8 @@ def noop_worker_function(args):
 
 
 def create_table():
+    print "Creating tables"
     conn = sqlite3.connect('example.db')
-
     c = conn.cursor()
 
     #TODO: need to key by run type too!
@@ -47,20 +47,13 @@ def create_table():
              (result_key int, key text, value text,
               FOREIGN KEY(result_key) REFERENCES sample_point(instance));''')
 
-    c.execute('''CREATE TABLE stocks
-             (date text, trans text, symbol text, qty real, price real)''')
-        
     conn.commit()
     conn.close()
 
-def wrap_db_record_impl(inner_func, params):
-    if not os.path.exists("example.db"):
-        create_table()
+def save_sample_to_db(params, results):
+    assert os.path.exists("example.db")
     conn = sqlite3.connect('example.db')
-    
     c = conn.cursor()
-
-    results = inner_func(params)
 
     param_hash = hash(frozenset(params.items()))
     result_hash = hash(frozenset(results.items()))
@@ -82,13 +75,6 @@ def wrap_db_record_impl(inner_func, params):
         
     conn.commit()
     conn.close()
-    return results
-
-def wrap_db_record(inner_func):
-    rval = lambda x: wrap_db_record_impl(inner_func, x)
-    return rval
-
-
 
 import pp
 import job_manager
@@ -116,6 +102,7 @@ results_to_date = {}
 def internal_result_handler(params, results):
     global results_to_date
     results_to_date[ frozendict(params) ] = results
+    save_sample_to_db(params, results)
 
 def drive_autotuner( search_func, worker_func):
     """ Given a search function which decides which points to explore
@@ -125,6 +112,9 @@ def drive_autotuner( search_func, worker_func):
     global results_to_date
 
     import time
+
+    if not os.path.exists("example.db"):
+        create_table()
 
     start_time = time.time()
 
