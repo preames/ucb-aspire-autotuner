@@ -102,6 +102,11 @@ class autotuner_options:
         self.save_results_in_db = True
         self.reuse_results = True
 
+# needed to make the dictionary itself a valid hash key
+class frozendict(dict):
+    def __hash__(self):
+        return hash(frozenset(self.items()))
+
 # Note: This should be moved into a SQL database or some such
 #TODO
 # alternately, this could be used to cache results only long enough
@@ -112,7 +117,7 @@ def internal_result_handler(params, results):
     global results_to_date
     results_to_date[ frozendict(params) ] = results
 
-def drive_autotuner( search_func, worker_func, options ):
+def drive_autotuner( search_func, worker_func):
     """ Given a search function which decides which points to explore
     (structured as a generator) and a worker_func that takes the parameters
     and returns a result, this function handles the logic of dispatching
@@ -133,7 +138,7 @@ def drive_autotuner( search_func, worker_func, options ):
 
     # TODO: We will need to add timeouts
     for item in search_func():
-        job_manager.dispatch_one_job(job_server, worker_func, item)
+        job_manager.dispatch_one_job(job_server, worker_func, item, internal_result_handler)
 
         # This allows the search func to _only_ be called when
         # there is a slot free.  This gives it slightly better
@@ -144,10 +149,11 @@ def drive_autotuner( search_func, worker_func, options ):
             time.sleep(1)
 
     # Wait for any remaining jobs to finish
-    job_manager.wait_for_remaining_jobs(job_server)
+    job_manager.wait_for_remaining_jobs(job_server, internal_result_handler)
 
     print "Time elapsed: ", time.time() - start_time, "s"
     job_server.print_stats()
-    print job_manager.results_to_date
+    global results_to_date
+    print results_to_date
 
 
