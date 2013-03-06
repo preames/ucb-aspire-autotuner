@@ -22,7 +22,7 @@ def brute_force_search():
 
 def explore_point(args):
     print "Running expore point"
-    framework.wrap_db_record(framework.noop_worker_function)(args)
+    return framework.wrap_db_record(framework.noop_worker_function)(args)
 
 
 import framework

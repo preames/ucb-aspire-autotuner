@@ -27,13 +27,25 @@ def noop_worker_function(args):
     import random
     import time
     time.sleep(random.randint(1,5))
-    return [random.random(), 1] # FP 0 <= 1
+    return {"perf" : random.random(), "random_name": 1} # FP 0 <= 1
 
 
 def create_table():
     conn = sqlite3.connect('example.db')
 
     c = conn.cursor()
+
+    #TODO: need to key by run type too!
+    c.execute('''CREATE TABLE sample_point
+             (instance INT PRIMARY_KEY, param_hash text, result_hash text);''')
+
+    c.execute('''CREATE TABLE param_instances
+             (param_key int, key text, value text,
+              FOREIGN KEY(param_key) REFERENCES sample_point(instance) );''')
+
+    c.execute('''CREATE TABLE result_instances
+             (result_key int, key text, value text,
+              FOREIGN KEY(result_key) REFERENCES sample_point(instance));''')
 
     c.execute('''CREATE TABLE stocks
              (date text, trans text, symbol text, qty real, price real)''')
@@ -42,16 +54,32 @@ def create_table():
     conn.close()
 
 def wrap_db_record_impl(inner_func, params):
-    results = inner_func(params)
-
     if not os.path.exists("example.db"):
         create_table()
     conn = sqlite3.connect('example.db')
     
     c = conn.cursor()
-    
-    c.execute("INSERT INTO stocks VALUES ('2006-01-05','BUY','RHAT',100,35.14)")
-    
+
+    results = inner_func(params)
+
+    param_hash = hash(frozenset(params.items()))
+    result_hash = hash(frozenset(results.items()))
+
+    # get a new sample id key
+    c.execute("INSERT INTO sample_point(param_hash, result_hash) VALUES(?,?)", [param_hash, result_hash])
+    c.execute('SELECT last_insert_rowid()')
+    fkey = c.fetchone()[0]
+    fkey = str(fkey)
+
+    # add the data tied to that key
+    for name, value in params.iteritems():
+        sql = "INSERT INTO param_instances VALUES (?,?,?)"
+        c.execute(sql, [str(fkey), str(name), str(value)])
+
+    for name, value in results.iteritems():
+        sql = "INSERT INTO result_instances VALUES (?,?,?)"
+        c.execute(sql, [str(fkey), str(name), str(value)])
+        
     conn.commit()
     conn.close()
     return results
@@ -69,7 +97,22 @@ def add_module(name):
     """ Add your module with your implementation and anything it depends on."""
     job_manager.g_modules += [name]
 
-def drive_autotuner( search_func, worker_func ):
+class autotuner_options:
+    def __init__(self):
+        self.save_results_in_db = True
+        self.reuse_results = True
+
+# Note: This should be moved into a SQL database or some such
+#TODO
+# alternately, this could be used to cache results only long enough
+# for the search algorithm to decide what to retain - advantages
+# to each I suppose.  Cache size might become a problem
+results_to_date = {}
+def internal_result_handler(params, results):
+    global results_to_date
+    results_to_date[ frozendict(params) ] = results
+
+def drive_autotuner( search_func, worker_func, options ):
     """ Given a search function which decides which points to explore
     (structured as a generator) and a worker_func that takes the parameters
     and returns a result, this function handles the logic of dispatching
