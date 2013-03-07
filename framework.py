@@ -29,7 +29,6 @@ def noop_worker_function(args):
     time.sleep(random.randint(1,5))
     return {"perf" : random.random(), "random_name": 1.0}
 
-
 def create_table():
     print "Creating tables"
     conn = sqlite3.connect('example.db')
@@ -81,7 +80,12 @@ import job_manager
 
 def add_module(name):
     """ Add your module with your implementation and anything it depends on."""
-    job_manager.g_modules += [name]
+    if isinstance(name, basestring):
+        job_manager.g_modules += [name]
+    else:
+        for mod in name:
+            assert isinstance(mod, basestring)
+        job_manager.g_modules += name
 
 class autotuner_options:
     def __init__(self):

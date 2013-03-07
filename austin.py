@@ -21,6 +21,25 @@ def brute_force_search():
                 pass # currently non-feasible
 
 def explore_point(args):
-    print "Running expore point"
-    return framework.noop_worker_function(args)
+    print "Running explore point"
+    import subprocess
+    import tempfile
+    # Grr, writing to a logfile is NOT optional here
+    # PP nicely hangs (forever) if we try creating a piped subprocess from
+    # within a subprocess of PP
+    logfile = tempfile.NamedTemporaryFile(mode='w+b')
+    # call is blocking, popen isn't?
 
+    # in reality, this command should be something like:
+    # make -C absolute/path/to/your/install
+    # /absolute/path/to/script 
+    subprocess.call(['cd /home/reames/Files/projects/aspire-autotune && ls -l'],stdout=logfile, stderr=subprocess.STDOUT,shell=True)
+    # right now, just dumping the content into the master log, probably not ideal
+    with open(logfile.name) as f:
+        content = f.read()
+        print content
+
+        # TODO: now we have to actually parse that output and return it
+        return framework.noop_worker_function(args)
+
+    assert False
