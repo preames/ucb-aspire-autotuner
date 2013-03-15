@@ -33,6 +33,7 @@ def dispatch_one_job(job_server, worker_func, item, callback):
         for i in xrange(len(jobs)):
             if None == jobs[i]:
                 print "Dispatching job " +str(i)
+                print "   Parameters: " + str(item)
                 jobs[i] = [item, job_server.submit(worker_func, (item,),modules=tuple(g_modules),globals=globals())];
                 return
         

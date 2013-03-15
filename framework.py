@@ -126,7 +126,7 @@ def drive_autotuner( search_func, worker_func):
     ppservers = () #ppservers = ("10.0.0.1",)
     
     # PP automatically uses every CPU, to avoid overload, use one less
-    job_server = pp.Server(3, ppservers=ppservers)
+    job_server = pp.Server(1, ppservers=ppservers)
     
     print "Starting pp with", job_server.get_ncpus(), "workers"
 
